@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛡️ Panel de Seguridad Web - OWASP</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #eef2f3; color: #333; }
+        .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; }
+        h3 { margin-top: 0; color: #34495e; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        input, select { margin: 10px 5px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; width: 220px; }
+        button { padding: 10px 20px; cursor: pointer; background: #27ae60; color: white; border: none; border-radius: 6px; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #219150; }
+        .btn-logout { background: #95a5a6; margin-left: 10px; }
+        .btn-logout:hover { background: #7f8c8d; }
+        .btn-delete { background: #e74c3c; padding: 5px 10px; }
+        .btn-delete:hover { background: #c0392b; }
+        .btn-update { background: #f1c40f; color: black; padding: 5px 10px; }
+        .btn-update:hover { background: #f39c12; }
+        .btn-get { background: #3498db; width: 100%; margin-top: 10px; }
+        ul { list-style: none; padding: 0; margin-top: 15px; }
+        li { background: #fff; margin: 8px 0; padding: 12px; border-radius: 6px; border-left: 5px solid #3498db; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .status-info { font-size: 0.9em; font-weight: bold; color: #7f8c8d; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ Sistema de Seguridad y Roles</h1>
+
+    <div class="card" style="border-top: 5px solid #27ae60;">
+        <h3>🔑 Acceso al Sistema (Login)</h3>
+        <div id="sessionInfo" class="status-info">Estado: No identificado</div>
+        <input type="text" id="loginUser" placeholder="Usuario">
+        <input type="password" id="loginPass" placeholder="Contraseña">
+        <button onclick="login()">Entrar</button>
+        <button class="btn-logout" onclick="logout()">Cerrar Sesión</button>
+    </div>
+
+    <div class="card" style="border-top: 5px solid #8e44ad;">
+        <h3>📝 Registrar Usuario (POST)</h3>
+        <p><small>Punto: <strong>Diseño Seguro</strong> (Asignación controlada de roles).</small></p>
+        <input type="text" id="regUser" placeholder="Nombre de usuario">
+        <select id="regRole">
+            <option value="user">Usuario Estándar</option>
+            <option value="admin">Administrador</option>
+            <option value="editor">Editor</option>
+        </select>
+        <button onclick="registrar()">Crear Cuenta</button>
+    </div>
+
+    <div class="card" style="border-top: 5px solid #3498db;">
+        <h3>👥 Gestión de Usuarios (CRUD)</h3>
+        <p><small>Punto: <strong>Broken Access Control</strong> (Solo el admin verá/usará esto).</small></p>
+        <button class="btn-get" onclick="obtenerUsuarios()">🔄 Actualizar Lista de Usuarios</button>
+        <ul id="listaUsuarios"></ul>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api/auth';
+
+        window.onload = () => {
+            const token = localStorage.getItem('token');
+            if(token) {
+                document.getElementById('sessionInfo').innerText = "Estado: Sesión activa";
+                obtenerUsuarios();
+            }
+        };
+
+        // 1. LOGIN
+        async function login() {
+            const user = document.getElementById('loginUser').value;
+            const pass = document.getElementById('loginPass').value;
+
+            try {
+                const res = await fetch(`${API_URL}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: user, password: pass })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('token', data.token); 
+                    document.getElementById('sessionInfo').innerText = `Estado: Conectado como [${data.rol}]`;
+                    alert(`✅ LOGIN EXITOSO\nBienvenido: ${user}`);
+                    obtenerUsuarios();
+                } else {
+                    alert(`❌ ERROR: ${data.mensaje}`);
+                }
+            } catch (err) {
+                alert("Error de conexión");
+            }
+        }
+
+        // LOGOUT CORREGIDO (Sin peticiones al servidor)
+        function logout() {
+            localStorage.removeItem('token');
+            document.getElementById('sessionInfo').innerText = "Estado: Sesión cerrada";
+            document.getElementById('listaUsuarios').innerHTML = "";
+            alert("Sesión cerrada correctamente. Token eliminado.");
+        }
+
+        // 2. REGISTRO CORREGIDO (Enviando Token para poder crear Admins)
+        async function registrar() {
+            const username = document.getElementById('regUser').value;
+            const role = document.getElementById('regRole').value;
+            const token = localStorage.getItem('token'); // Recuperamos el token del admin logueado
+            
+            if(!username) return alert("Escribe un nombre");
+
+            const res = await fetch(`${API_URL}/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` // [CLAVE] Le decimos al servidor quién intenta registrar
+                },
+                body: JSON.stringify({ username, role })
+            });
+            
+            const data = await res.json();
+            if(res.ok) {
+                alert(`🚀 USUARIO CREADO\nGuarda esta clave: ${data.passwordGenerated}`);
+                obtenerUsuarios();
+            } else {
+                // Si sale error aquí, es porque el servidor detectó que no eres admin real
+                alert("Error: " + data.mensaje);
+            }
+        }
+
+        // 3. LISTAR
+        async function obtenerUsuarios() {
+            const token = localStorage.getItem('token');
+            if(!token) return;
+
+            const res = await fetch(`${API_URL}/users`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (res.status === 401 || res.status === 403) {
+                document.getElementById('listaUsuarios').innerHTML = `<p style="color:red; text-align:center;">⚠️ ACCESO DENEGADO</p>`;
+                return;
+            }
+
+            const usuarios = await res.json();
+            const lista = document.getElementById('listaUsuarios');
+            lista.innerHTML = usuarios.map(u => `
+                <li>
+                    <span><strong>${u.username}</strong> <small>(${u.role})</small></span>
+                    <div>
+                        <button class="btn-update" onclick="actualizarRol('${u._id}')">Rol</button>
+                        <button class="btn-delete" onclick="borrarUsuario('${u._id}')">Borrar</button>
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        // 4. ACTUALIZAR
+        async function actualizarRol(id) {
+            const nuevoRol = prompt("Nuevo rol (admin / user / editor):");
+            if(!nuevoRol) return;
+
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/user/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ role: nuevoRol })
+            });
+            
+            if(res.ok) {
+                alert("Actualizado");
+                obtenerUsuarios();
+            } else {
+                const data = await res.json();
+                alert("Error: " + data.mensaje);
+            }
+        }
+
+        // 5. BORRAR
+        async function borrarUsuario(id) {
+            if(!confirm("¿Eliminar?")) return;
+
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/user/${id}`, { 
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if(res.ok) {
+                alert("Eliminado");
+                obtenerUsuarios();
+            } else {
+                const data = await res.json();
+                alert("Error: " + data.mensaje);
+            }
+        }
+    </script>
+</body>
+</html>
