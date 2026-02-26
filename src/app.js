@@ -2,8 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const helmet = require('helmet'); // [NUEVO]
-const rateLimit = require('express-rate-limit'); // [NUEVO]
+const helmet = require('helmet'); 
+const rateLimit = require('express-rate-limit'); 
 const conectarDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 
@@ -14,60 +14,53 @@ conectarDB();
 
 // --- CONFIGURACIONES DE SEGURIDAD ---
 
-// [PUNTO 3: DISEÑO INSEGURO] 
-// Helmet protege tu app de ataques web comunes (XSS, Clickjacking) configurando cabeceras HTTP.
 // [PUNTO 3: DISEÑO INSEGURO]
-// Configuramos Helmet pero relajamos la CSP para permitir los eventos de los botones (onclick)
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             "default-src": ["'self'"],
-            "script-src": ["'self'", "'unsafe-inline'"], // Permite scripts internos
-            "script-src-attr": ["'unsafe-inline'"],    // ¡ESTO ARREGLA TUS BOTONES!
-            "style-src": ["'self'", "'unsafe-inline'"],  // Permite tus estilos CSS
+            "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"], // Permitimos CDN si usas Bootstrap/SweetAlert
+            "script-src-attr": ["'unsafe-inline'"],
+            "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            "connect-src": ["'self'", "*"] // IMPORTANTE: Permite que el HTML se conecte a cualquier API (Render)
         },
     },
 }));
 
-// [PUNTO 3: DISEÑO INSEGURO]
-// Rate Limiting: Evita ataques de fuerza bruta (que alguien intente mil contraseñas por segundo).
+// [PUNTO 3: DISEÑO INSEGURO] - Rate Limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
-    max: 100, // Máximo 100 peticiones por IP
+    windowMs: 15 * 60 * 1000, 
+    max: 100, 
     message: 'Demasiados intentos desde esta IP, intente más tarde.'
 });
 app.use('/api/', limiter); 
 
+// CONFIGURACIÓN DE CORS: Permite que tu frontend hable con el backend
 app.use(cors());
 app.use(express.json());
 
-// --- LÓGICA DE RUTA PARA LA CARPETA PUBLIC ---
-const publicPath = __dirname.endsWith('src') 
-    ? path.join(__dirname, '..', 'public') 
-    : path.join(__dirname, 'public');
-
+// --- LÓGICA PARA CARPETA PUBLIC ---
+// Ajuste para que funcione tanto en local como en Render
+const publicPath = path.join(__dirname, '..', 'public');
 app.use(express.static(publicPath));
 
-// [PUNTO 1: BROKEN ACCESS CONTROL]
-// Las rutas están agrupadas. El control real se hará dentro de 'authRoutes'
+// RUTAS
 app.use('/api/auth', authRoutes);
 
-// Si alguien entra a la raíz, enviamos el index.html
+// Servir el index.html en la raíz
 app.get('/', (req, res) => {
     res.sendFile(path.join(publicPath, 'index.html'));
 });
 
-// [PUNTO 3: DISEÑO INSEGURO]
-// Manejo de errores centralizado: No muestra detalles técnicos (stacktrace) al usuario, 
-// lo que evita que un atacante conozca tu estructura.
+// Manejo de errores
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send({ error: 'Error interno del servidor' });
 });
 
+// CONFIGURACIÓN DE PUERTO PARA RENDER
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`✅ Servidor Protegido en: http://localhost:${PORT}`);
+// Usamos '0.0.0.0' para que Render pueda exponer el servicio a internet
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Servidor Protegido y Online en puerto: ${PORT}`);
 });
-
-// Esto permite que tu HTML hable con el servidor
